@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import React, {useEffect, useRef, useState} from 'react';
 import {
   View,
@@ -22,7 +23,7 @@ import {
   Contours,
 } from 'react-native-vision-camera-face-detector';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import {Skia, PaintStyle, BlurStyle} from '@shopify/react-native-skia';
+import {Skia, PaintStyle} from '@shopify/react-native-skia';
 
 interface PermissionsPageProps {
   onRequestPermission: () => Promise<boolean>;
@@ -46,8 +47,10 @@ const Loading = () => (
 const FaceDetector = () => {
   const cameraRef = useRef<Camera>(null);
   const [cameraPosition, setCameraPosition] = useState<CameraPosition>('back');
+  const [rotationValue, setRotationValue] = useState(0); // Manually controlled rotation state
   const device = useCameraDevice(cameraPosition);
   const {hasPermission, requestPermission} = useCameraPermission();
+
   const format = useCameraFormat(device, [
     {
       videoResolution: Dimensions.get('window'),
@@ -63,6 +66,15 @@ const FaceDetector = () => {
     }
   }, [hasPermission, requestPermission]);
 
+  // Manual rotation using setInterval
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRotationValue(prev => (prev + 3) % 360); // Increment rotation by 3° per frame
+    }, 16); // Approximately 60 FPS (1000ms / 16 = ~60 FPS)
+
+    return () => clearInterval(interval); // Cleanup interval when component unmounts
+  }, []);
+
   const faceDetectionOptions = useRef<FaceDetectionOptions>({
     performanceMode: 'fast',
     contourMode: 'all', // Using contours for face outline
@@ -71,32 +83,6 @@ const FaceDetector = () => {
   }).current;
 
   const {detectFaces} = useFaceDetector(faceDetectionOptions);
-
-  // Helper function to draw the face contour outline with shadow
-  const drawFaceOutline = (
-    frame: any,
-    faceContours: Contours,
-    paint: any,
-    shadowPaint: any,
-  ) => {
-    'worklet';
-    const path = Skia.Path.Make();
-
-    const facePoints = faceContours.FACE;
-    console.log({facePoints});
-    facePoints.forEach((point, index) => {
-      if (index === 0) {
-        path.moveTo(point.x, point.y);
-      } else {
-        path.lineTo(point.x, point.y);
-      }
-    });
-    path.close();
-
-    // Draw shadowed outline (using mask filter)
-    frame.drawPath(path, shadowPaint); // Draw shadow first
-    frame.drawPath(path, paint); // Draw outline second
-  };
 
   // Helper function to draw a square based on the face contours
   const drawBoundingBox = (frame: any, faceContours: Contours, paint: any) => {
@@ -122,137 +108,102 @@ const FaceDetector = () => {
 
     // Draw the square
     frame.drawPath(squarePath, paint);
+
+    // Return the bounding box coordinates for drawing the arcs
+    return {minX, maxX, minY, maxY};
   };
 
-  // Helper function to draw partial lines at the corners of the square
-  const drawPartialCorners = (
+  // Helper function to draw three rotating arcs with gaps around the bounding box
+  const drawRotatingArcs = (
     frame: any,
-    faceContours: Contours,
+    minX: number,
+    maxX: number,
+    minY: number,
+    maxY: number,
     paint: any,
+    rotationValue: number,
   ) => {
     'worklet';
-    const facePoints = faceContours['FACE'];
 
-    // Get the minimum and maximum X and Y values
-    const minX = Math.min(...facePoints.map(p => p.x));
-    const maxX = Math.max(...facePoints.map(p => p.x));
-    const minY = Math.min(...facePoints.map(p => p.y));
-    const maxY = Math.max(...facePoints.map(p => p.y));
+    const radius = (maxX - minX) / 3;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const width = radius * 2 + 80;
+    const height = radius * 2 + 80;
 
-    const cornerLength = (maxX - minX) * 0.15; // Length of the partial square lines
-    const padding = 10; // Adjust padding
+    const arcLength = 30; // Each arc covers 30°
 
-    // Top-left corner
-    frame.drawLine(
-      minX - padding,
-      minY - padding,
-      minX - padding + cornerLength,
-      minY - padding,
-      paint,
-    );
-    frame.drawLine(
-      minX - padding,
-      minY - padding,
-      minX - padding,
-      minY - padding + cornerLength,
-      paint,
-    );
+    // Rotate the start points for each arc based on the animation
+    const animatedRotation = rotationValue % 360;
 
-    // Top-right corner
-    frame.drawLine(
-      maxX + padding,
-      minY - padding,
-      maxX + padding - cornerLength,
-      minY - padding,
-      paint,
-    );
-    frame.drawLine(
-      maxX + padding,
-      minY - padding,
-      maxX + padding,
-      minY - padding + cornerLength,
-      paint,
-    );
+    const arcProps = {
+      x: centerX - radius - 40,
+      y: centerY - radius - 40,
+      width,
+      height,
+    };
 
-    // Bottom-left corner
-    frame.drawLine(
-      minX - padding,
-      maxY + padding,
-      minX - padding + cornerLength,
-      maxY + padding,
-      paint,
-    );
-    frame.drawLine(
-      minX - padding,
-      maxY + padding,
-      minX - padding,
-      maxY + padding - cornerLength,
-      paint,
-    );
+    // Arc 1: Start at 0° and go 30°
+    const arcPath1 = Skia.Path.Make();
+    arcPath1.addArc(arcProps, animatedRotation + 0, arcLength);
+    frame.drawPath(arcPath1, paint);
 
-    // Bottom-right corner
-    frame.drawLine(
-      maxX + padding,
-      maxY + padding,
-      maxX + padding - cornerLength,
-      maxY + padding,
-      paint,
-    );
-    frame.drawLine(
-      maxX + padding,
-      maxY + padding,
-      maxX + padding,
-      maxY + padding - cornerLength,
-      paint,
-    );
+    // Arc 2: Start at 120° and go 30° (120° gap between Arc 1 and Arc 2)
+    const arcPath2 = Skia.Path.Make();
+    arcPath2.addArc(arcProps, animatedRotation + 120, arcLength);
+    frame.drawPath(arcPath2, paint);
+
+    // Arc 3: Start at 240° and go 30° (120° gap between Arc 2 and Arc 3)
+    const arcPath3 = Skia.Path.Make();
+    arcPath3.addArc(arcProps, animatedRotation + 240, arcLength);
+    frame.drawPath(arcPath3, paint);
   };
 
-  // Skia frame processor to handle face outline, shadow, and square detection
-  const frameProcessor = useSkiaFrameProcessor(frame => {
-    'worklet';
+  // Skia frame processor to handle the square and the three arcs
+  const frameProcessor = useSkiaFrameProcessor(
+    frame => {
+      'worklet';
 
-    // First, render the frame context
-    frame.render();
+      frame.render();
 
-    const faces = detectFaces(frame);
+      const faces = detectFaces(frame);
 
-    for (const face of faces) {
-      // Get face contours
-      const faceContours = face.contours;
+      for (const face of faces) {
+        const faceContours = face.contours;
 
-      // Paint for the face outline
-      const outlinePaint = Skia.Paint();
-      outlinePaint.setColor(Skia.Color('cyan')); // Face outline color
-      outlinePaint.setStyle(PaintStyle.Stroke);
-      outlinePaint.setStrokeWidth(4);
-      outlinePaint.setAntiAlias(true);
+        const squarePaint = Skia.Paint();
+        squarePaint.setColor(Skia.Color('white'));
+        squarePaint.setStyle(PaintStyle.Stroke);
+        squarePaint.setStrokeWidth(2);
+        squarePaint.setAntiAlias(true);
 
-      // Shadow paint for the face outline shadow effect
-      const shadowPaint = Skia.Paint();
-      shadowPaint.setColor(Skia.Color('black'));
-      shadowPaint.setStyle(PaintStyle.Stroke);
-      shadowPaint.setStrokeWidth(8);
-      shadowPaint.setMaskFilter(
-        Skia.MaskFilter.MakeBlur(BlurStyle.Normal, 15, true),
-      );
+        const arcPaint = Skia.Paint();
+        arcPaint.setColor(Skia.Color('cyan'));
+        arcPaint.setStyle(PaintStyle.Stroke);
+        arcPaint.setStrokeWidth(4); // Thicker for emphasis
+        arcPaint.setAntiAlias(true);
 
-      // Paint for the square and corner lines
-      const squarePaint = Skia.Paint();
-      squarePaint.setColor(Skia.Color('white')); // Square color
-      squarePaint.setStyle(PaintStyle.Stroke);
-      squarePaint.setStrokeWidth(2);
-      squarePaint.setAntiAlias(true);
+        // Draw the square and get its bounds
+        const {minX, maxX, minY, maxY} = drawBoundingBox(
+          frame,
+          faceContours,
+          squarePaint,
+        );
 
-      // Draw face outline with shadow
-      drawFaceOutline(frame, faceContours, outlinePaint, shadowPaint);
-
-      // Draw the square inside the face contours
-      drawBoundingBox(frame, faceContours, squarePaint);
-
-      // Draw partial corner lines inside the square
-      drawPartialCorners(frame, faceContours, squarePaint);
-    }
-  }, []);
+        // Draw the rotating arcs around the square using the manual rotation state
+        drawRotatingArcs(
+          frame,
+          minX,
+          maxX,
+          minY,
+          maxY,
+          arcPaint,
+          rotationValue,
+        );
+      }
+    },
+    [rotationValue],
+  ); // Re-run the frame processor whenever rotationValue changes
 
   const toggleCamera = () => {
     setCameraPosition(cameraPosition === 'back' ? 'front' : 'back');
@@ -281,6 +232,7 @@ const FaceDetector = () => {
         fps={format?.maxFps}
         exposure={0}
       />
+
       <View style={tw`absolute bottom-10 w-full flex-row justify-around`}>
         <TouchableOpacity onPress={toggleCamera}>
           <MaterialIcons name="search" size={40} color="white" />
