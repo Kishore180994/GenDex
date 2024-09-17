@@ -121,42 +121,52 @@ const FaceDetector = () => {
     minY: number,
     maxY: number,
     paint: any,
-    rotationValue: number,
+    paintCounter: any,
+    rotValue: number,
   ) => {
     'worklet';
 
     const radius = (maxX - minX) / 3;
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
-    const width = radius * 2 + 80;
-    const height = radius * 2 + 80;
 
     const arcLength = 30; // Each arc covers 30°
 
     // Rotate the start points for each arc based on the animation
-    const animatedRotation = rotationValue % 360;
+    const animatedRotation = rotValue % 360;
+    const animatedRotationCounter = (-1 * rotValue) % 360;
 
     const arcProps = {
       x: centerX - radius - 40,
       y: centerY - radius - 40,
-      width,
-      height,
+      width: radius * 2 + 80,
+      height: radius * 2 + 80,
     };
 
-    // Arc 1: Start at 0° and go 30°
-    const arcPath1 = Skia.Path.Make();
-    arcPath1.addArc(arcProps, animatedRotation + 0, arcLength);
-    frame.drawPath(arcPath1, paint);
+    const arcPropsCounter = {
+      x: centerX - radius - 50,
+      y: centerY - radius - 50,
+      width: radius * 2 + 100,
+      height: radius * 2 + 100,
+    };
 
-    // Arc 2: Start at 120° and go 30° (120° gap between Arc 1 and Arc 2)
-    const arcPath2 = Skia.Path.Make();
-    arcPath2.addArc(arcProps, animatedRotation + 120, arcLength);
-    frame.drawPath(arcPath2, paint);
+    // Clockwise arcs
+    for (let i = 0; i < 3; i++) {
+      const arcPath = Skia.Path.Make();
+      arcPath.addArc(arcProps, animatedRotation + i * 120, arcLength);
+      frame.drawPath(arcPath, paint);
+    }
 
-    // Arc 3: Start at 240° and go 30° (120° gap between Arc 2 and Arc 3)
-    const arcPath3 = Skia.Path.Make();
-    arcPath3.addArc(arcProps, animatedRotation + 240, arcLength);
-    frame.drawPath(arcPath3, paint);
+    // Counter clockwise arcs
+    for (let i = 0; i < 3; i++) {
+      const arcPath = Skia.Path.Make();
+      arcPath.addArc(
+        arcPropsCounter,
+        animatedRotationCounter + i * 120,
+        arcLength,
+      );
+      frame.drawPath(arcPath, paintCounter);
+    }
   };
 
   // Skia frame processor to handle the square and the three arcs
@@ -180,8 +190,14 @@ const FaceDetector = () => {
         const arcPaint = Skia.Paint();
         arcPaint.setColor(Skia.Color('cyan'));
         arcPaint.setStyle(PaintStyle.Stroke);
-        arcPaint.setStrokeWidth(4); // Thicker for emphasis
+        arcPaint.setStrokeWidth(2); // Thicker for emphasis
         arcPaint.setAntiAlias(true);
+
+        const arcPaintCounter = Skia.Paint();
+        arcPaintCounter.setColor(Skia.Color('green'));
+        arcPaintCounter.setStyle(PaintStyle.Stroke);
+        arcPaintCounter.setStrokeWidth(2); // Thicker for emphasis
+        arcPaintCounter.setAntiAlias(true);
 
         // Draw the square and get its bounds
         const {minX, maxX, minY, maxY} = drawBoundingBox(
@@ -198,6 +214,7 @@ const FaceDetector = () => {
           minY,
           maxY,
           arcPaint,
+          arcPaintCounter,
           rotationValue,
         );
       }
@@ -235,7 +252,7 @@ const FaceDetector = () => {
 
       <View style={tw`absolute bottom-10 w-full flex-row justify-around`}>
         <TouchableOpacity onPress={toggleCamera}>
-          <MaterialIcons name="search" size={40} color="white" />
+          <MaterialIcons name="cameraswitch" size={40} color="white" />
         </TouchableOpacity>
       </View>
     </View>
